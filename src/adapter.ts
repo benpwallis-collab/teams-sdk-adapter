@@ -1,26 +1,35 @@
-// src/adapter.ts
-import {
-  CloudAdapter,
-  ConfigurationBotFrameworkAuthentication,
-} from "botbuilder-core";
+import { BotFrameworkAdapter, TurnContext } from "botbuilder";
 
-// Uses process.env with these keys:
-// MicrosoftAppId
-// MicrosoftAppPassword
-// MicrosoftAppType
-// MicrosoftAppTenantId
-const botFrameworkAuthentication =
-  new ConfigurationBotFrameworkAuthentication(process.env);
+/**
+ * IMPORTANT:
+ * Bot Framework ONLY reads these env vars for auth:
+ *
+ * MicrosoftAppId
+ * MicrosoftAppPassword
+ * MicrosoftAppType
+ * MicrosoftAppTenantId
+ */
+const appId = process.env.MicrosoftAppId;
+const appPassword = process.env.MicrosoftAppPassword;
 
-export const adapter = new CloudAdapter(botFrameworkAuthentication);
+if (!appId || !appPassword) {
+  throw new Error("Missing MicrosoftAppId or MicrosoftAppPassword");
+}
 
-adapter.onTurnError = async (context, error) => {
-  const err: any = error;
+export const adapter = new BotFrameworkAdapter({
+  appId,
+  appPassword,
+});
+
+adapter.onTurnError = async (
+  context: TurnContext,
+  error: unknown
+) => {
+  const err = error as any;
 
   console.error("❌ onTurnError diagnostics:", {
     message: err?.message,
     name: err?.name,
-    code: err?.code,
     statusCode: err?.statusCode,
     details: err?.details,
     request: err?.request
@@ -29,17 +38,11 @@ adapter.onTurnError = async (context, error) => {
           url: err.request.url,
         }
       : undefined,
-    response: err?.response
-      ? {
-          status: err.response.status,
-          headers: err.response.headers,
-        }
-      : undefined,
   });
 
   try {
     await context.sendActivity("Something went wrong.");
-  } catch (e) {
-    console.error("❌ Failed to send fallback message:", e);
+  } catch (sendErr) {
+    console.error("❌ Failed to send fallback message", sendErr);
   }
 };
