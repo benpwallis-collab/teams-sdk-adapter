@@ -4,6 +4,9 @@
   "private": true,
   "type": "commonjs",
   "main": "dist/index.js",
+  "engines": {
+    "node": "18.x"
+  },
   "scripts": {
     "dev": "ts-node src/index.ts",
     "build": "tsc",
