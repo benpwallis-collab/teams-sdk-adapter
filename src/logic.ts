@@ -18,23 +18,8 @@ export async function handleTurn(context: TurnContext) {
     conversationType: a.conversation?.conversationType,
     conversationId: a.conversation?.id,
     from: a.from?.id,
-    serviceUrl: a.serviceUrl,
   });
 
-  /**
-   * 🔑 CRITICAL FIX
-   * Force the Bot Framework connector to use the same regional serviceUrl
-   * that Teams used for this conversation (EMEA-safe).
-   */
-  const adapterAny = context.adapter as any;
-
-  if (
-    adapterAny?.connectorClient?.options &&
-    a.serviceUrl
-  ) {
-    adapterAny.connectorClient.options.baseUri = a.serviceUrl;
-  }
-
-  // Now sending a message will NOT 401
+  // ✅ THIS is the supported way
   await context.sendActivity("Hello from InnsynAI 👋");
 }
