@@ -10,27 +10,29 @@ if (!appId || !appPassword) {
 export const adapter = new BotFrameworkAdapter({
   appId,
   appPassword,
+  // REQUIRED for multi-tenant bots
+  appType: "MultiTenant",
+  tenantId: "common",
 });
 
-adapter.onTurnError = async (context: any, error: any) => {
+adapter.onTurnError = async (context, error) => {
   console.error("❌ onTurnError diagnostics:", {
-    message: error?.message,
-    name: error?.name,
-    code: error?.code,
-    statusCode: error?.statusCode,
-    details: error?.details,
-    body: error?.response?.body,
-    request: {
-      method: error?.request?.method,
-      url: error?.request?.url,
-    },
+    message: error.message,
+    name: error.name,
+    stack: error.stack,
+    statusCode: (error as any)?.statusCode,
+    details: (error as any)?.details,
+    request: (error as any)?.request
+      ? {
+          method: (error as any).request.method,
+          url: (error as any).request.url,
+        }
+      : undefined,
   });
 
   try {
-    await context.sendActivity(
-      "Sorry, something went wrong while processing your message."
-    );
-  } catch (sendErr) {
-    console.error("❌ Failed to send fallback message", sendErr);
+    await context.sendActivity("Something went wrong.");
+  } catch (err) {
+    console.error("❌ Failed to send fallback message", err);
   }
 };
