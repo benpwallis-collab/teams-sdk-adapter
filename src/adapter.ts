@@ -7,12 +7,18 @@ if (!appId || !appPassword) {
   throw new Error("Missing TEAMS_BOT_APP_ID or TEAMS_BOT_APP_PASSWORD");
 }
 
+/**
+ * IMPORTANT:
+ * Multi-tenant configuration is controlled via ENV VARS:
+ *
+ * MicrosoftAppType=MultiTenant
+ * MicrosoftAppTenantId=common
+ *
+ * NOT via constructor options in botbuilder 4.23.x
+ */
 export const adapter = new BotFrameworkAdapter({
   appId,
   appPassword,
-  // REQUIRED for multi-tenant bots
-  appType: "MultiTenant",
-  tenantId: "common",
 });
 
 adapter.onTurnError = async (context, error) => {
