@@ -1,14 +1,5 @@
 import { BotFrameworkAdapter, TurnContext } from "botbuilder";
 
-/**
- * IMPORTANT:
- * Bot Framework ONLY reads these env vars for auth:
- *
- * MicrosoftAppId
- * MicrosoftAppPassword
- * MicrosoftAppType
- * MicrosoftAppTenantId
- */
 const appId = process.env.MicrosoftAppId;
 const appPassword = process.env.MicrosoftAppPassword;
 
@@ -21,10 +12,7 @@ export const adapter = new BotFrameworkAdapter({
   appPassword,
 });
 
-adapter.onTurnError = async (
-  context: TurnContext,
-  error: unknown
-) => {
+adapter.onTurnError = async (context: TurnContext, error: unknown) => {
   const err = error as any;
 
   console.error("❌ onTurnError diagnostics:", {
@@ -33,16 +21,11 @@ adapter.onTurnError = async (
     statusCode: err?.statusCode,
     details: err?.details,
     request: err?.request
-      ? {
-          method: err.request.method,
-          url: err.request.url,
-        }
+      ? { method: err.request.method, url: err.request.url }
       : undefined,
   });
 
   try {
     await context.sendActivity("Something went wrong.");
-  } catch (sendErr) {
-    console.error("❌ Failed to send fallback message", sendErr);
-  }
+  } catch {}
 };
