@@ -12,9 +12,25 @@ export const adapter = new BotFrameworkAdapter({
   appPassword,
 });
 
-adapter.onTurnError = async (context, error) => {
-  console.error("❌ onTurnError:", error);
+adapter.onTurnError = async (context: any, error: any) => {
+  console.error("❌ onTurnError diagnostics:", {
+    message: error?.message,
+    name: error?.name,
+    code: error?.code,
+    statusCode: error?.statusCode,
+    details: error?.details,
+    body: error?.response?.body,
+    request: {
+      method: error?.request?.method,
+      url: error?.request?.url,
+    },
+  });
+
   try {
-    await context.sendActivity("Something went wrong.");
-  } catch {}
+    await context.sendActivity(
+      "Sorry, something went wrong while processing your message."
+    );
+  } catch (sendErr) {
+    console.error("❌ Failed to send fallback message", sendErr);
+  }
 };
