@@ -1,3 +1,11 @@
+// ---- CRITICAL: polyfill global crypto for Node 18 ----
+import { webcrypto } from "crypto";
+
+if (!(global as any).crypto) {
+  (global as any).crypto = webcrypto;
+}
+// -----------------------------------------------------
+
 import express, { Request, Response } from "express";
 import { adapter } from "./adapter";
 import { handleTurn } from "./logic";
@@ -11,13 +19,9 @@ app.get("/", (_req: Request, res: Response) => {
 });
 
 app.post("/teams", async (req: Request, res: Response) => {
-  await adapter.processActivity(
-    req,
-    res,
-    async (context: TurnContext) => {
-      await handleTurn(context);
-    }
-  );
+  await adapter.processActivity(req, res, async (context: TurnContext) => {
+    await handleTurn(context);
+  });
 });
 
 const port = process.env.PORT ? Number(process.env.PORT) : 3000;
