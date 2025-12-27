@@ -1,12 +1,12 @@
-// ---- CRITICAL: polyfill global crypto for Node 18 ----
-import { webcrypto } from "crypto";
-
-if (!(global as any).crypto) {
-  (global as any).crypto = webcrypto;
-}
-// -----------------------------------------------------
-
+// src/index.ts
 import express, { Request, Response } from "express";
+
+// Polyfill global crypto for libs that expect it (Render sometimes lacks globalThis.crypto)
+import { webcrypto } from "crypto";
+if (!(globalThis as any).crypto) {
+  (globalThis as any).crypto = webcrypto as any;
+}
+
 import { adapter } from "./adapter";
 import { handleTurn } from "./logic";
 import type { TurnContext } from "botbuilder";
@@ -19,7 +19,7 @@ app.get("/", (_req: Request, res: Response) => {
 });
 
 app.post("/teams", async (req: Request, res: Response) => {
-  await adapter.processActivity(req, res, async (context: TurnContext) => {
+  await adapter.process(req, res, async (context: TurnContext) => {
     await handleTurn(context);
   });
 });
@@ -27,4 +27,10 @@ app.post("/teams", async (req: Request, res: Response) => {
 const port = process.env.PORT ? Number(process.env.PORT) : 3000;
 app.listen(port, () => {
   console.log(`🤖 Teams SDK adapter listening on :${port}/teams`);
+  console.log("Auth mode:", {
+    MicrosoftAppId: process.env.MicrosoftAppId ? "set" : "MISSING",
+    MicrosoftAppPassword: process.env.MicrosoftAppPassword ? "set" : "MISSING",
+    MicrosoftAppType: process.env.MicrosoftAppType ?? "(default)",
+    MicrosoftAppTenantId: process.env.MicrosoftAppTenantId ?? "(empty)",
+  });
 });
