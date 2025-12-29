@@ -5,7 +5,7 @@ import { BotFrameworkAdapter, TurnContext } from "botbuilder";
  *
  * MicrosoftAppId
  * MicrosoftAppPassword
- * MicrosoftAppTenantId   (required for SingleTenant)
+ * MicrosoftAppTenantId
  * MicrosoftAppType=SingleTenant
  */
 
@@ -42,6 +42,27 @@ export const adapter = new BotFrameworkAdapter({
 });
 
 // --------------------------------------------------
+// 🔍 PER-TURN DIAGNOSTICS (LOGGING ONLY)
+// --------------------------------------------------
+adapter.use(async (context, next) => {
+  const activity = context.activity;
+
+  console.log("📨 Incoming activity", {
+    type: activity.type,
+    channelId: activity.channelId,
+    conversationType: activity.conversation?.conversationType,
+    serviceUrl: activity.serviceUrl,
+    tenantId:
+      activity.channelData?.tenant?.id ??
+      activity.conversation?.tenantId ??
+      "(unknown)",
+    fromId: activity.from?.id,
+  });
+
+  await next();
+});
+
+// --------------------------------------------------
 // Global error handler
 // --------------------------------------------------
 adapter.onTurnError = async (
@@ -59,14 +80,21 @@ adapter.onTurnError = async (
       ? {
           method: err.request.method,
           url: err.request.url,
+          authorizationHeaderPresent: Boolean(
+            err.request.headers?.authorization
+          ),
         }
       : undefined,
+    serviceUrlUsed: context.activity?.serviceUrl,
   });
 
-  // Attempt to notify user (will fail on auth issues, that's fine)
+  // Attempt to notify user (expected to fail on auth issues)
   try {
     await context.sendActivity("Something went wrong.");
   } catch (sendErr) {
-    console.error("❌ Failed to send fallback message", sendErr);
+    console.error("❌ Failed to send fallback message", {
+      message: (sendErr as any)?.message,
+      statusCode: (sendErr as any)?.statusCode,
+    });
   }
 };
