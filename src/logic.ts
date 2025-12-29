@@ -1,7 +1,7 @@
 import type { TurnContext } from "botbuilder";
 
 /**
- * ENV VARS – must already exist
+ * ENV VARS (do NOT hard-fail at import time)
  */
 const {
   TEAMS_TENANT_LOOKUP_URL,
@@ -11,15 +11,16 @@ const {
   SUPABASE_URL,
 } = process.env as Record<string, string>;
 
-if (
-  !TEAMS_TENANT_LOOKUP_URL ||
-  !RAG_QUERY_URL ||
-  !SUPABASE_ANON_KEY ||
-  !INTERNAL_LOOKUP_SECRET ||
-  !SUPABASE_URL
-) {
-  throw new Error("❌ Missing required env vars for Teams → RAG / Claim");
-}
+/**
+ * Startup diagnostics (safe)
+ */
+console.log("🔧 Teams env check", {
+  hasTenantLookupUrl: !!TEAMS_TENANT_LOOKUP_URL,
+  hasRagQueryUrl: !!RAG_QUERY_URL,
+  hasAnonKey: !!SUPABASE_ANON_KEY,
+  hasInternalSecret: !!INTERNAL_LOOKUP_SECRET,
+  hasSupabaseUrl: !!SUPABASE_URL,
+});
 
 /**
  * Resolve InnsynAI tenant_id from Teams AAD tenant ID
@@ -27,6 +28,10 @@ if (
 async function resolveTenantId(
   aadTenantId: string,
 ): Promise<string | null> {
+  if (!TEAMS_TENANT_LOOKUP_URL || !SUPABASE_ANON_KEY || !INTERNAL_LOOKUP_SECRET) {
+    return null;
+  }
+
   const res = await fetch(TEAMS_TENANT_LOOKUP_URL, {
     method: "POST",
     headers: {
@@ -49,7 +54,6 @@ async function resolveTenantId(
 export async function handleTurn(context: TurnContext) {
   const a = context.activity;
 
-  // Only respond to user messages
   if (a.type !== "message") return;
 
   const text = (a.text || "").trim();
@@ -59,7 +63,7 @@ export async function handleTurn(context: TurnContext) {
     a.channelData?.tenant?.id ||
     a.conversation?.tenantId;
 
-  console.log("📨 Teams message received", {
+  console.log("📨 Teams message", {
     text: text.slice(0, 120),
     aadTenantId,
     conversationId: a.conversation?.id,
@@ -73,15 +77,21 @@ export async function handleTurn(context: TurnContext) {
     return;
   }
 
-  let tenantId = await resolveTenantId(aadTenantId);
+  const tenantId = await resolveTenantId(aadTenantId);
 
   /**
-   * 🔑 UNMAPPED TEAMS TENANT → MINT CLAIM TOKEN
+   * 🔑 UNMAPPED TEAMS TENANT → CLAIM FLOW
    */
   if (!tenantId) {
-    console.log("🔑 No tenant mapping found, minting claim token", {
-      aadTenantId,
-    });
+    if (!SUPABASE_URL || !INTERNAL_LOOKUP_SECRET) {
+      console.error("❌ Claim flow misconfigured");
+      await context.sendActivity(
+        "⚠️ This Teams organization isn’t connected yet.",
+      );
+      return;
+    }
+
+    console.log("🔑 Minting Teams claim token", { aadTenantId });
 
     const res = await fetch(
       `${SUPABASE_URL}/functions/v1/mint-teams-claim-token`,
@@ -98,9 +108,9 @@ export async function handleTurn(context: TurnContext) {
     );
 
     if (!res.ok) {
-      console.error("❌ Failed to mint claim token", await res.text());
+      console.error("❌ Claim token mint failed", await res.text());
       await context.sendActivity(
-        "⚠️ This Teams organization isn’t connected to InnsynAI yet. Please try again shortly.",
+        "⚠️ This Teams organization isn’t connected yet. Please try again shortly.",
       );
       return;
     }
@@ -117,9 +127,8 @@ export async function handleTurn(context: TurnContext) {
     }
 
     if (data.error === "already_mapped") {
-      // Race condition: mapping created between lookup and mint
       await context.sendActivity(
-        "✅ This Teams organization was just connected. Please try your question again.",
+        "✅ This Teams organization was just connected. Please try again.",
       );
       return;
     }
@@ -131,9 +140,15 @@ export async function handleTurn(context: TurnContext) {
   }
 
   /**
-   * ✅ TENANT RESOLVED → NORMAL RAG FLOW
+   * ✅ TENANT RESOLVED → RAG FLOW
    */
-  console.log("✅ Tenant resolved, running RAG", { tenantId });
+  if (!RAG_QUERY_URL || !SUPABASE_ANON_KEY) {
+    console.error("❌ RAG misconfigured");
+    await context.sendActivity(
+      "⚠️ Question answering is temporarily unavailable.",
+    );
+    return;
+  }
 
   await context.sendActivity("⏳ Working on it…");
 
