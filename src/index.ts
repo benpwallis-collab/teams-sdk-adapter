@@ -1,39 +1,78 @@
-// src/index.ts
-import express, { Request, Response } from "express";
-import { adapter } from "./adapter";
-import { handleTurn } from "./logic";
-import type { TurnContext } from "botbuilder";
+import { BotFrameworkAdapter, TurnContext } from "botbuilder";
 
-// Polyfill crypto (required on Render / Node 18 for botbuilder deps)
-import { webcrypto } from "crypto";
-if (!(globalThis as any).crypto) {
-  (globalThis as any).crypto = webcrypto as any;
+/**
+ * Bot Framework auth is driven by ENV VARS ONLY.
+ * We log them explicitly to prove what the SDK is using.
+ */
+const appId = process.env.MicrosoftAppId;
+const appPassword = process.env.MicrosoftAppPassword;
+const appTenantId = process.env.MicrosoftAppTenantId;
+const appType = process.env.MicrosoftAppType;
+
+console.log("🔐 Bot auth configuration at startup:", {
+  MicrosoftAppId: appId ?? "MISSING",
+  MicrosoftAppPassword: appPassword ? "SET" : "MISSING",
+  MicrosoftAppTenantId: appTenantId ?? "(empty)",
+  MicrosoftAppType: appType ?? "(default)",
+});
+
+if (!appId || !appPassword) {
+  throw new Error("Missing MicrosoftAppId or MicrosoftAppPassword");
 }
 
-const app = express();
-app.use(express.json());
-
-app.get("/", (_req: Request, res: Response) => {
-  res.status(200).send("ok");
+/**
+ * IMPORTANT:
+ * Do NOT pass appType / tenantId here.
+ * BotFrameworkAdapter v4 reads them ONLY from env vars.
+ */
+export const adapter = new BotFrameworkAdapter({
+  appId,
+  appPassword,
 });
 
-app.post("/teams", async (req: Request, res: Response) => {
-  await adapter.processActivity(
-    req,
-    res,
-    async (context: TurnContext) => {
-      await handleTurn(context);
-    }
-  );
-});
+/**
+ * Global turn error handler with deep diagnostics.
+ * This is where we see EXACTLY what fails on sendActivity.
+ */
+adapter.onTurnError = async (
+  context: TurnContext,
+  error: unknown
+) => {
+  const err = error as any;
 
-const port = process.env.PORT ? Number(process.env.PORT) : 3000;
-app.listen(port, () => {
-  console.log(`🤖 Teams SDK adapter listening on :${port}/teams`);
-  console.log("Auth mode (runtime):", {
-    MicrosoftAppId: process.env.MicrosoftAppId ? "set" : "MISSING",
-    MicrosoftAppPassword: process.env.MicrosoftAppPassword ? "set" : "MISSING",
-    MicrosoftAppType: process.env.MicrosoftAppType ?? "(default)",
-    MicrosoftAppTenantId: process.env.MicrosoftAppTenantId ?? "(empty)",
+  console.error("❌ onTurnError diagnostics:", {
+    message: err?.message,
+    name: err?.name,
+    errorCode: err?.errorCode,
+    statusCode: err?.statusCode,
+    subError: err?.subError,
+    correlationId: err?.correlationId,
+    details: err?.details,
+    request: err?.request
+      ? {
+          method: err.request.method,
+          url: err.request.url,
+          headers: err.request.headers
+            ? {
+                // redact auth, keep signal
+                authorization: err.request.headers.authorization
+                  ? "REDACTED"
+                  : undefined,
+                "x-ms-client-request-id":
+                  err.request.headers["x-ms-client-request-id"],
+              }
+            : undefined,
+        }
+      : undefined,
   });
-});
+
+  /**
+   * Attempt to notify user, but this will ALSO fail if auth is broken.
+   * We swallow errors so we don't mask the real issue.
+   */
+  try {
+    await context.sendActivity("Something went wrong.");
+  } catch (sendErr) {
+    console.error("❌ Failed to send fallback message", sendErr);
+  }
+};
