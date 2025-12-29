@@ -5,6 +5,7 @@ if (!(globalThis as any).crypto) {
   (globalThis as any).crypto = webcrypto as any;
 }
 // --------------------------------------------
+
 import express from "express";
 import { adapter } from "./adapter";
 import { handleTurn } from "./logic";
@@ -20,7 +21,7 @@ app.get("/", (_req, res) => {
 
 // Bot endpoint — MUST match Azure Bot messaging endpoint
 app.post("/teams", async (req, res) => {
-  await adapter.processActivity(req, res, async (context: TurnContext) => {
+  await adapter.process(req, res, async (context: TurnContext) => {
     await handleTurn(context);
   });
 });
