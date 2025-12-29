@@ -1,27 +1,28 @@
 import type { TurnContext } from "botbuilder";
 
 /**
- * ENV VARS – must already exist (same as old bridge)
+ * ENV VARS – must already exist
  */
 const {
   TEAMS_TENANT_LOOKUP_URL,
   RAG_QUERY_URL,
   SUPABASE_ANON_KEY,
   INTERNAL_LOOKUP_SECRET,
+  SUPABASE_URL,
 } = process.env as Record<string, string>;
 
 if (
   !TEAMS_TENANT_LOOKUP_URL ||
   !RAG_QUERY_URL ||
   !SUPABASE_ANON_KEY ||
-  !INTERNAL_LOOKUP_SECRET
+  !INTERNAL_LOOKUP_SECRET ||
+  !SUPABASE_URL
 ) {
-  throw new Error("❌ Missing required env vars for Teams → RAG");
+  throw new Error("❌ Missing required env vars for Teams → RAG / Claim");
 }
 
 /**
  * Resolve InnsynAI tenant_id from Teams AAD tenant ID
- * (same logic as old bridge, intentionally)
  */
 async function resolveTenantId(
   aadTenantId: string,
@@ -58,7 +59,7 @@ export async function handleTurn(context: TurnContext) {
     a.channelData?.tenant?.id ||
     a.conversation?.tenantId;
 
-  console.log("📨 Teams message", {
+  console.log("📨 Teams message received", {
     text: text.slice(0, 120),
     aadTenantId,
     conversationId: a.conversation?.id,
@@ -67,30 +68,75 @@ export async function handleTurn(context: TurnContext) {
 
   if (!aadTenantId) {
     await context.sendActivity(
-      "⚠️ I can’t identify this Teams workspace yet.",
+      "⚠️ I can’t identify this Microsoft Teams organization yet.",
     );
     return;
   }
 
-  const tenantId = await resolveTenantId(aadTenantId);
-
-  // Tenant not yet connected (marketplace install case)
-  if (!tenantId) {
-    await context.sendActivity(
-      "👋 InnsynAI isn’t connected to an organization yet.\n\n" +
-        "An admin can connect this Teams workspace at:\n" +
-        "https://innsynai.app",
-    );
-    return;
-  }
-
-  // Immediate feedback (keeps Teams UX responsive)
-  await context.sendActivity("⏳ Working on it…");
+  let tenantId = await resolveTenantId(aadTenantId);
 
   /**
-   * RAG QUERY
-   * Uses same contract as old bridge
+   * 🔑 UNMAPPED TEAMS TENANT → MINT CLAIM TOKEN
    */
+  if (!tenantId) {
+    console.log("🔑 No tenant mapping found, minting claim token", {
+      aadTenantId,
+    });
+
+    const res = await fetch(
+      `${SUPABASE_URL}/functions/v1/mint-teams-claim-token`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-internal-token": INTERNAL_LOOKUP_SECRET,
+        },
+        body: JSON.stringify({
+          teams_tenant_id: aadTenantId,
+        }),
+      },
+    );
+
+    if (!res.ok) {
+      console.error("❌ Failed to mint claim token", await res.text());
+      await context.sendActivity(
+        "⚠️ This Teams organization isn’t connected to InnsynAI yet. Please try again shortly.",
+      );
+      return;
+    }
+
+    const data = await res.json();
+
+    if (data.success && data.claim_url) {
+      await context.sendActivity(
+        "👋 This Microsoft Teams organization isn’t connected to InnsynAI yet.\n\n" +
+        "🔐 If you’re an InnsynAI admin, connect it here:\n" +
+        data.claim_url,
+      );
+      return;
+    }
+
+    if (data.error === "already_mapped") {
+      // Race condition: mapping created between lookup and mint
+      await context.sendActivity(
+        "✅ This Teams organization was just connected. Please try your question again.",
+      );
+      return;
+    }
+
+    await context.sendActivity(
+      "⚠️ Unable to connect this Teams organization right now.",
+    );
+    return;
+  }
+
+  /**
+   * ✅ TENANT RESOLVED → NORMAL RAG FLOW
+   */
+  console.log("✅ Tenant resolved, running RAG", { tenantId });
+
+  await context.sendActivity("⏳ Working on it…");
+
   const ragRes = await fetch(RAG_QUERY_URL, {
     method: "POST",
     headers: {
