@@ -1,3 +1,10 @@
+// ---- REQUIRED POLYFILL (Render / Node 18) ----
+import { webcrypto } from "crypto";
+
+if (!(globalThis as any).crypto) {
+  (globalThis as any).crypto = webcrypto as any;
+}
+// --------------------------------------------
 import express from "express";
 import { adapter } from "./adapter";
 import { handleTurn } from "./logic";
