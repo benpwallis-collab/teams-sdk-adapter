@@ -11,6 +11,7 @@ import { BotFrameworkAdapter, TurnContext } from "botbuilder";
 
 const appId = process.env.MicrosoftAppId;
 const appPassword = process.env.MicrosoftAppPassword;
+const appTenantId = process.env.MicrosoftAppTenantId;
 
 if (!appId || !appPassword) {
   throw new Error("Missing MicrosoftAppId or MicrosoftAppPassword");
