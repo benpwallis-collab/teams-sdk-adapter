@@ -1,41 +1,24 @@
 import { BotFrameworkAdapter, TurnContext } from "botbuilder";
 
 /**
- * Bot Framework ONLY reads these env vars for auth:
+ * Bot Framework auth is driven by ENV VARS ONLY:
  *
- * MicrosoftAppId           (required)
- * MicrosoftAppPassword     (required)
- * MicrosoftAppType         (must be "SingleTenant")
- * MicrosoftAppTenantId     (required for SingleTenant)
+ * MicrosoftAppId
+ * MicrosoftAppPassword
+ * MicrosoftAppTenantId
+ * MicrosoftAppType=SingleTenant
  */
 
-const {
-  MicrosoftAppId,
-  MicrosoftAppPassword,
-  MicrosoftAppType,
-  MicrosoftAppTenantId,
-} = process.env;
+const appId = process.env.MicrosoftAppId;
+const appPassword = process.env.MicrosoftAppPassword;
 
-if (!MicrosoftAppId || !MicrosoftAppPassword) {
+if (!appId || !appPassword) {
   throw new Error("Missing MicrosoftAppId or MicrosoftAppPassword");
 }
 
-if (MicrosoftAppType !== "SingleTenant") {
-  throw new Error(
-    `MicrosoftAppType must be "SingleTenant", got "${MicrosoftAppType}"`
-  );
-}
-
-if (!MicrosoftAppTenantId) {
-  throw new Error("Missing MicrosoftAppTenantId for SingleTenant bot");
-}
-
 export const adapter = new BotFrameworkAdapter({
-  appId: MicrosoftAppId,
-  appPassword: MicrosoftAppPassword,
-  // These two are REQUIRED for stable cross-tenant replies
-  appType: "SingleTenant",
-  tenantId: MicrosoftAppTenantId,
+  appId,
+  appPassword,
 });
 
 adapter.onTurnError = async (
@@ -50,15 +33,13 @@ adapter.onTurnError = async (
     statusCode: err?.statusCode,
     details: err?.details,
     request: err?.request
-      ? {
-          method: err.request.method,
-          url: err.request.url,
-        }
+      ? { method: err.request.method, url: err.request.url }
       : undefined,
   });
 
-  // This may still 401 if auth is broken, so swallow failures
   try {
     await context.sendActivity("Something went wrong.");
-  } catch {}
+  } catch (sendErr) {
+    console.error("❌ Failed to send fallback message", sendErr);
+  }
 };
