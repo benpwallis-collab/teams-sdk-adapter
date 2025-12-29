@@ -1,8 +1,12 @@
-import { BotFrameworkAdapter, TurnContext } from "botbuilder";
+import {
+  CloudAdapter,
+  ConfigurationServiceClientCredentialFactory,
+  TurnContext,
+} from "botbuilder";
 
 /**
- * Bot Framework auth is driven by ENV VARS ONLY.
- * We log them explicitly to prove what the SDK is using.
+ * Bot Framework auth is driven by ENV VARS.
+ * We log them explicitly to prove runtime configuration.
  */
 const appId = process.env.MicrosoftAppId;
 const appPassword = process.env.MicrosoftAppPassword;
@@ -16,23 +20,30 @@ console.log("🔐 Bot auth configuration at startup:", {
   MicrosoftAppType: appType ?? "(default)",
 });
 
-if (!appId || !appPassword) {
-  throw new Error("Missing MicrosoftAppId or MicrosoftAppPassword");
+if (!appId || !appPassword || !appTenantId) {
+  throw new Error(
+    "Missing MicrosoftAppId, MicrosoftAppPassword, or MicrosoftAppTenantId"
+  );
 }
 
 /**
- * IMPORTANT:
- * Do NOT pass appType / tenantId here.
- * BotFrameworkAdapter v4 reads them ONLY from env vars.
+ * Credential factory (REQUIRED for SingleTenant)
  */
-export const adapter = new BotFrameworkAdapter({
-  appId,
-  appPassword,
-});
+const credentialsFactory =
+  new ConfigurationServiceClientCredentialFactory({
+    MicrosoftAppId: appId,
+    MicrosoftAppPassword: appPassword,
+    MicrosoftAppTenantId: appTenantId,
+    MicrosoftAppType: "SingleTenant",
+  });
+
+/**
+ * CloudAdapter (required for 2025 auth model)
+ */
+export const adapter = new CloudAdapter(credentialsFactory);
 
 /**
  * Global turn error handler with deep diagnostics.
- * This is where we see EXACTLY what fails on sendActivity.
  */
 adapter.onTurnError = async (
   context: TurnContext,
@@ -43,36 +54,17 @@ adapter.onTurnError = async (
   console.error("❌ onTurnError diagnostics:", {
     message: err?.message,
     name: err?.name,
-    errorCode: err?.errorCode,
     statusCode: err?.statusCode,
-    subError: err?.subError,
-    correlationId: err?.correlationId,
     details: err?.details,
-    request: err?.request
-      ? {
-          method: err.request.method,
-          url: err.request.url,
-          headers: err.request.headers
-            ? {
-                // redact auth, keep signal
-                authorization: err.request.headers.authorization
-                  ? "REDACTED"
-                  : undefined,
-                "x-ms-client-request-id":
-                  err.request.headers["x-ms-client-request-id"],
-              }
-            : undefined,
-        }
-      : undefined,
+    serviceUrl: context.activity?.serviceUrl,
   });
 
-  /**
-   * Attempt to notify user, but this will ALSO fail if auth is broken.
-   * We swallow errors so we don't mask the real issue.
-   */
   try {
     await context.sendActivity("Something went wrong.");
   } catch (sendErr) {
-    console.error("❌ Failed to send fallback message", sendErr);
+    console.error("❌ Failed to send fallback message", {
+      message: (sendErr as any)?.message,
+      statusCode: (sendErr as any)?.statusCode,
+    });
   }
 };
