@@ -1,8 +1,4 @@
-import {
-  BotFrameworkAdapter,
-  TurnContext,
-} from "botbuilder";
-import { ConnectorClient } from "botframework-connector";
+import { BotFrameworkAdapter, TurnContext } from "botbuilder";
 
 /**
  * Bot Framework authentication is driven by ENV VARS ONLY:
@@ -20,55 +16,13 @@ if (!appId || !appPassword) {
   throw new Error("Missing MicrosoftAppId or MicrosoftAppPassword");
 }
 
-// --------------------------------------------------
-// Adapter
-// --------------------------------------------------
 export const adapter = new BotFrameworkAdapter({
   appId,
   appPassword,
 });
 
 // --------------------------------------------------
-// 🔎 DIAGNOSTIC: log outbound access token + target URL
-// --------------------------------------------------
-const originalCreateConnectorClient =
-  (adapter as any).createConnectorClient;
-
-(adapter as any).createConnectorClient = function (
-  serviceUrl: string,
-  credentials: any
-) {
-  const client: ConnectorClient =
-    originalCreateConnectorClient.call(
-      this,
-      serviceUrl,
-      credentials
-    );
-
-  const originalSendActivity =
-    client.sendActivity.bind(client);
-
-  client.sendActivity = async (...args: any[]) => {
-    const token =
-      credentials?.accessToken ||
-      credentials?.token;
-
-    if (token) {
-      console.log("🔐 OUTBOUND BOT TOKEN (first 60 chars):");
-      console.log(token.slice(0, 60));
-      console.log("🎯 Service URL:", serviceUrl);
-    } else {
-      console.log("❌ No outbound token found on credentials");
-    }
-
-    return originalSendActivity(...args);
-  };
-
-  return client;
-};
-
-// --------------------------------------------------
-// Error handling
+// Error handling (DO NOT remove)
 // --------------------------------------------------
 adapter.onTurnError = async (
   context: TurnContext,
@@ -89,7 +43,7 @@ adapter.onTurnError = async (
       : undefined,
   });
 
-  // Attempt to notify user (will fail on 401, that’s OK)
+  // Attempt to notify user (will fail on 401; that's fine)
   try {
     await context.sendActivity("Something went wrong.");
   } catch (sendErr) {
