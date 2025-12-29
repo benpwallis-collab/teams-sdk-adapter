@@ -1,4 +1,5 @@
-import { BotFrameworkAdapter, TurnContext } from "botbuilder";
+import { BotFrameworkAdapter } from "botbuilder";
+import type { TurnContext } from "botbuilder-core";
 
 /**
  * Bot Framework authentication is driven by ENV VARS ONLY:
@@ -22,12 +23,12 @@ export const adapter = new BotFrameworkAdapter({
 });
 
 // --------------------------------------------------
-// Error handling (DO NOT remove)
+// Error handling
 // --------------------------------------------------
 adapter.onTurnError = async (
   context: TurnContext,
   error: unknown
-) => {
+): Promise<void> => {
   const err = error as any;
 
   console.error("❌ onTurnError diagnostics:", {
@@ -43,7 +44,6 @@ adapter.onTurnError = async (
       : undefined,
   });
 
-  // Attempt to notify user (will fail on 401; that's fine)
   try {
     await context.sendActivity("Something went wrong.");
   } catch (sendErr) {
