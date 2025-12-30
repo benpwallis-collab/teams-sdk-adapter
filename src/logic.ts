@@ -234,8 +234,9 @@ export async function handleTurn(context: TurnContext) {
     return;
   }
 
-  // 👇 PLACEHOLDER MESSAGE (we will replace this)
+  // Placeholder message
   const placeholder = await context.sendActivity("⏳ Working on it…");
+  const placeholderId = placeholder?.id;
 
   try {
     const ragRes = await fetch(RAG_QUERY_URL, {
@@ -258,23 +259,36 @@ export async function handleTurn(context: TurnContext) {
     const rag = await ragRes.json();
     const card = buildRagCard(rag);
 
-    // ✅ REPLACE PLACEHOLDER
-    await context.updateActivity({
-      id: placeholder.id,
-      type: "message",
-      attachments: [
-        {
-          contentType: "application/vnd.microsoft.card.adaptive",
-          content: card,
-        },
-      ],
-    });
-  } catch (err) {
-    // ❌ REPLACE PLACEHOLDER WITH ERROR
-    await context.updateActivity({
-      id: placeholder.id,
-      type: "message",
-      text: "❌ I couldn’t get an answer right now.",
-    });
+    if (placeholderId) {
+      await context.updateActivity({
+        id: placeholderId,
+        type: "message",
+        attachments: [
+          {
+            contentType: "application/vnd.microsoft.card.adaptive",
+            content: card,
+          },
+        ],
+      });
+    } else {
+      await context.sendActivity({
+        attachments: [
+          {
+            contentType: "application/vnd.microsoft.card.adaptive",
+            content: card,
+          },
+        ],
+      });
+    }
+  } catch {
+    if (placeholderId) {
+      await context.updateActivity({
+        id: placeholderId,
+        type: "message",
+        text: "❌ I couldn’t get an answer right now.",
+      });
+    } else {
+      await context.sendActivity("❌ I couldn’t get an answer right now.");
+    }
   }
 }
