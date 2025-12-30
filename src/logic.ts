@@ -11,14 +11,6 @@ const {
   SUPABASE_URL,
 } = process.env as Record<string, string>;
 
-console.log("🔧 Teams env check", {
-  hasTenantLookupUrl: !!TEAMS_TENANT_LOOKUP_URL,
-  hasRagQueryUrl: !!RAG_QUERY_URL,
-  hasAnonKey: !!SUPABASE_ANON_KEY,
-  hasInternalSecret: !!INTERNAL_LOOKUP_SECRET,
-  hasSupabaseUrl: !!SUPABASE_URL,
-});
-
 /**
  * Resolve InnsynAI tenant_id from Teams AAD tenant ID
  */
@@ -44,7 +36,7 @@ async function resolveTenantId(aadTenantId: string): Promise<string | null> {
 }
 
 /**
- * Helpers (ported from per-tenant bridge)
+ * Helpers
  */
 function getPlatformLabel(source: string): string {
   const labels: Record<string, string> = {
@@ -136,7 +128,7 @@ export async function handleTurn(context: TurnContext) {
   const a = context.activity;
 
   /**
-   * FEEDBACK HANDLER (card submit)
+   * FEEDBACK HANDLER
    */
   if (a.value?.action === "feedback") {
     if (!RAG_QUERY_URL || !SUPABASE_ANON_KEY || !INTERNAL_LOOKUP_SECRET) return;
@@ -169,13 +161,6 @@ export async function handleTurn(context: TurnContext) {
     a.channelData?.tenant?.id ||
     a.conversation?.tenantId;
 
-  console.log("📨 Teams message", {
-    text: text.slice(0, 120),
-    aadTenantId,
-    conversationId: a.conversation?.id,
-    from: a.from?.id,
-  });
-
   if (!aadTenantId) {
     await context.sendActivity(
       "⚠️ I can’t identify this Microsoft Teams organization yet.",
@@ -186,11 +171,10 @@ export async function handleTurn(context: TurnContext) {
   const tenantId = await resolveTenantId(aadTenantId);
 
   /**
-   * 🔑 UNMAPPED → CLAIM FLOW
+   * CLAIM FLOW
    */
   if (!tenantId) {
     if (!SUPABASE_URL || !INTERNAL_LOOKUP_SECRET) {
-      console.error("❌ Claim flow misconfigured");
       await context.sendActivity(
         "⚠️ This Teams organization isn’t connected yet.",
       );
@@ -210,7 +194,6 @@ export async function handleTurn(context: TurnContext) {
     );
 
     if (!res.ok) {
-      console.error("❌ Claim token mint failed", await res.text());
       await context.sendActivity(
         "⚠️ This Teams organization isn’t connected yet. Please try again shortly.",
       );
@@ -222,8 +205,8 @@ export async function handleTurn(context: TurnContext) {
     if (data.success && data.claim_url) {
       await context.sendActivity(
         "👋 This Microsoft Teams organization isn’t connected to InnsynAI yet.\n\n" +
-        "🔐 If you’re an InnsynAI admin, connect it here:\n" +
-        data.claim_url,
+          "🔐 Someone from your organization needs to connect it using this link:\n" +
+          data.claim_url,
       );
       return;
     }
@@ -242,7 +225,7 @@ export async function handleTurn(context: TurnContext) {
   }
 
   /**
-   * ✅ TENANT RESOLVED → RAG FLOW (WITH CARDS)
+   * RAG FLOW (MESSAGE REPLACEMENT)
    */
   if (!RAG_QUERY_URL || !SUPABASE_ANON_KEY) {
     await context.sendActivity(
@@ -251,39 +234,47 @@ export async function handleTurn(context: TurnContext) {
     return;
   }
 
-  await context.sendActivity("⏳ Working on it…");
+  // 👇 PLACEHOLDER MESSAGE (we will replace this)
+  const placeholder = await context.sendActivity("⏳ Working on it…");
 
-  const ragRes = await fetch(RAG_QUERY_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: SUPABASE_ANON_KEY,
-      "x-tenant-id": tenantId,
-    },
-    body: JSON.stringify({
-      question: text,
-      source: "teams",
-    }),
-  });
-
-  if (!ragRes.ok) {
-    console.error("❌ RAG failed", await ragRes.text());
-    await context.sendActivity(
-      "❌ I couldn’t get an answer right now.",
-    );
-    return;
-  }
-
-  const rag = await ragRes.json();
-
-  const card = buildRagCard(rag);
-
-  await context.sendActivity({
-    attachments: [
-      {
-        contentType: "application/vnd.microsoft.card.adaptive",
-        content: card,
+  try {
+    const ragRes = await fetch(RAG_QUERY_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: SUPABASE_ANON_KEY,
+        "x-tenant-id": tenantId,
       },
-    ],
-  });
+      body: JSON.stringify({
+        question: text,
+        source: "teams",
+      }),
+    });
+
+    if (!ragRes.ok) {
+      throw new Error(await ragRes.text());
+    }
+
+    const rag = await ragRes.json();
+    const card = buildRagCard(rag);
+
+    // ✅ REPLACE PLACEHOLDER
+    await context.updateActivity({
+      id: placeholder.id,
+      type: "message",
+      attachments: [
+        {
+          contentType: "application/vnd.microsoft.card.adaptive",
+          content: card,
+        },
+      ],
+    });
+  } catch (err) {
+    // ❌ REPLACE PLACEHOLDER WITH ERROR
+    await context.updateActivity({
+      id: placeholder.id,
+      type: "message",
+      text: "❌ I couldn’t get an answer right now.",
+    });
+  }
 }
